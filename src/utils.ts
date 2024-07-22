@@ -14,6 +14,11 @@ export function binToHex(bin: string) {
     .join('');
 }
 
+export function binToDec(bin: string): string {
+  if (!bin) return '';
+  return parseInt(bin, 2).toString(10);
+}
+
 export function getZeroPadding(binary: string) {
   return '0'.repeat(Math.max(0, 32 - binary.length));
 }

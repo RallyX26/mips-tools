@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { BinInputParser, HexInputParser } from './instructions/parser/input-parser';
 	import type { ParseInfo } from './instructions/parser/parse-info';
-	import { binToHex, hexToBin } from './utils';
+	import { binToHex, hexToBin, binToDec } from './utils';
 	import type { Settings } from './instructions/settings';
 	import { HexFormat, DecFormat, BinFormat } from './instructions/format/immediate-format';
 	import { MipsDecoder, MipsEncoder } from './instructions/parser/mips-parser';
@@ -101,154 +101,133 @@
 <main>
 	<h1>mips converter</h1>
 	<section class="raised">
-		<form autocomplete="off" on:submit={(e) => e.preventDefault()}>
-			<h2 class="remove-margin-top">Input</h2>
-			<div>
-				<button id="change-input-type-button" class="icon-button" on:click={toggleInputType}>
-					<label for="change-input-type-button">using {settings.inputMode}</label>
-					<span class="material-icons">
-						sync
-					</span>
-				</button>
-			</div>
-			<div class="split">
-				<fieldset disabled={settings.inputMode === 'mips'}>
-					<h3>encoded instruction</h3>
-					{#if settings.encodedInputMode === 'hex'}
-					<div class="input full-width">
-						<input
-							id="hexInput"
-							class="code"
-							bind:value={hexInput}
-							placeholder="0x12345678"
-							autofocus
-						/>
+			<form autocomplete="off" on:submit={(e) => e.preventDefault()}>
+				<div class="split">
+					<h2 class="remove-margin-top">Instruction</h2>
+					<div>
+						<span id="mips-instruction" class="input inset full-width">
+							{#if !mipsInstruction}
+								unknown
+							{/if}
+							{#if mipsInstruction}
+								{#each mipsInstruction as mipsPart}
+									<span
+										style={`color: ${getFieldRoleColor(mipsPart.fieldRole ?? 'unknown')}`}
+										title={mipsPart.fieldRole ?? undefined}
+									>
+										<pre>{mipsPart.value}</pre>
+									</span>
+								{/each}
+							{/if}
+						</span>
 					</div>
-					{/if}
-					{#if settings.encodedInputMode === 'binary'}
-					<div class="input full-width">
-						<input
-							id="binInput"
-							class="code"
-							bind:value={binInput}
-							placeholder="01011001..."
-							autofocus
-						/>
+						<div id="settings" class="right">
+							{#if settings.inputMode === 'encoded'}
+							<div class="setting">
+								<button id="change-input-button" class="icon-button" on:click={toggleInput}>
+									<label for="change-input-button">as {settings.encodedInputMode}</label>
+									<span class="material-icons">
+										sync
+									</span>
+								</button>
+							</div>
+							{/if}
+							<div class="setting">
+							<button id="change-input-type-button" class="icon-button" on:click={toggleInputType}>
+								<label for="change-input-type-button">using {settings.inputMode}</label>
+								<span class="material-icons">
+									sync
+								</span>
+							</button>
+						</div>
 					</div>
-					{/if}
+				</div>
+				<div class="split">
+					<fieldset disabled={settings.inputMode === 'mips'}>
+						<h3 class="remove-margin-top">encoded instruction</h3>
+						{#if settings.encodedInputMode === 'hex'}
+						<div class="input full-width">
+							<input
+								id="hexInput"
+								class="code"
+								bind:value={hexInput}
+								placeholder="0x12345678"
+							/>
+						</div>
+						{/if}
+						{#if settings.encodedInputMode === 'binary'}
+						<div class="input full-width">
+							<input
+								id="binInput"
+								class="code"
+								bind:value={binInput}
+								placeholder="01011001..."
+							/>
+						</div>
+						{/if}
+						
+						{#if encodedParseInfo !== null}
+							<p class="error">{encodedParseInfo.value}</p>
+						{/if}
+					</fieldset>
+					<fieldset disabled={settings.inputMode === 'encoded'}>
+						<h3 class="remove-margin-top">mips instruction</h3>
+						<div class="input full-width">
+							<input
+								id="mipsInput"
+								class="code"
+								bind:value={instructionInput}
+								placeholder="add ..."
+							/>
+						</div>
+						{#if mipsParseInfo !== null}
+							<p class="error">{mipsParseInfo.value}</p>
+						{/if}
+					</fieldset>
+				</div>
+			</form>
+			<div class="inset">
+				<h3 class="remove-margin-top">Instruction Bytes</h3>
+			<table class="code-table raw-table transparent">
+				<tr>
+					<!-- <th class="vertical-th"></th> -->
 					
-					{#if encodedParseInfo !== null}
-						<p class="error">{encodedParseInfo.value}</p>
-					{/if}
-					<button id="change-input-button" class="icon-button" on:click={toggleInput}>
-						<label for="change-input-button">as {settings.encodedInputMode}</label>
-						<span class="material-icons">
-							sync
-						</span>
-					</button>
-				</fieldset>
-				<fieldset disabled={settings.inputMode === 'encoded'}>
-					<h3>mips instruction</h3>
-					<div class="input full-width">
-						<input
-							id="mipsInput"
-							class="code"
-							bind:value={instructionInput}
-							placeholder="add ..."
-							autofocus
-						/>
-					</div>
-					{#if mipsParseInfo !== null}
-						<p class="error">{mipsParseInfo.value}</p>
-					{/if}
-				</fieldset>
-			</div>
-		</form>
-	</section>
-	<section class="raised">
-		<h2 class="remove-margin-top">Bit information</h2>
-		<table class="code-table raw-table transparent">
-			<tr>
-				<!-- <th class="vertical-th"></th> -->
-				
-				{#each ['', 28, 24, 20, 16, 12, 8, 4, 0] as index}
-					<td style="text-align: right">{index}</td>
-				{/each}
-			</tr>
-		</table>
-		<table class="code-table raw-table">
-			<tbody>
-				<tr>
-					<th class="vertical-th">Binary</th>
-					{#each (fullBinary.match(/.{1,4}/g) ?? []) as chunk, i}
-						<td>
-							{#if i * 4 >= binary.length}
-								<span class="gray">{chunk}</span>
-							{/if}
-							{#if i * 4 + 4 <= binary.length}
-								<span>{chunk}</span>
-							{/if}
-							{#if i * 4 < binary.length && i * 4 + 4 > binary.length}
-								<span>{chunk.substring(0, binary.length - i * 4)}</span><!--
-								--><span class="gray">{'0'.repeat(4 - (binary.length - i * 4))}</span>
-							{/if}
-						</td>
+					{#each [32, 28, 24, 20, 16, 12, 8, 4, 0] as index}
+						<td style="text-align: right">{index}</td>
 					{/each}
 				</tr>
-				<tr>
-					<th class="vertical-th">Hex</th>
-					{#each fullHexadecimal.split('') as chunk, i}
-						<td class={i >= hexDisplay.length ? 'gray' : ''}>{chunk}</td>
-					{/each}
-				</tr>
-			</tbody>
-		</table>
-	</section>
-	<section id="decoded-instruction-section" class="raised">
-		<h2 style="margin-block-start: 0;">MIPS instruction</h2>
-		<div>
-			<span id="mips-instruction" class="code inset">
-				{#if !mipsInstruction}
-					unknown
-				{/if}
-				{#if mipsInstruction}
-					{#each mipsInstruction as mipsPart}
-						<span
-							style={`color: ${getFieldRoleColor(mipsPart.fieldRole ?? 'unknown')}`}
-							title={mipsPart.fieldRole ?? undefined}
-						>
-							<pre>{mipsPart.value}</pre>
-						</span>
-					{/each}
-				{/if}
-			</span>
+			</table>
+			<table class="code-table raw-table">
+				<tbody>
+					<tr>
+						<th class="vertical-th">Binary</th>
+						{#each (fullBinary.match(/.{1,4}/g) ?? []) as chunk, i}
+							<td>
+								{#if i * 4 >= binary.length}
+									<span class="gray">{chunk}</span>
+								{/if}
+								{#if i * 4 + 4 <= binary.length}
+									<span>{chunk}</span>
+								{/if}
+								{#if i * 4 < binary.length && i * 4 + 4 > binary.length}
+									<span>{chunk.substring(0, binary.length - i * 4)}</span><!--
+									--><span class="gray">{'0'.repeat(4 - (binary.length - i * 4))}</span>
+								{/if}
+							</td>
+						{/each}
+					</tr>
+					<tr>
+						<th class="vertical-th">Hex</th>
+						{#each fullHexadecimal.split('') as chunk, i}
+							<td class={i >= hexDisplay.length ? 'gray' : ''}>{chunk}</td>
+						{/each}
+					</tr>
+				</tbody>
+			</table>
 		</div>
-		<div><span class="code inset">0x{fullHexadecimal}</span></div>
-		<div><span class="code inset">0b{fullBinary}</span></div>
-		<div id="settings">
-			<div class="setting">
-				<label for="immediateFormat">Display immediate as:</label>
-				<select id="immediateFormat" bind:value={settings.immediateFormat}>
-					{#each immediateFormats as format}
-						<option value={format}>
-							{format.name}
-						</option>
-					{/each}
-				</select>
-			</div>
-			<div class="setting">
-				<label for="registerMode">Show registers as:</label>
-				<select id="registerMode" bind:value={settings.registerMode}>
-					{#each ['names', 'numbers'] as mode}
-						<option value={mode}>
-							{mode}
-						</option>
-					{/each}
-				</select>
-			</div>
-		</div>
-		<h3>Info</h3>
-		<table id="fields" class="inset code-table">
+		<div class="inset">
+			<h3 class="remove-margin-top">Instruction Fields</h3>
+		<table id="fields" class="code-table">
 			<thead>
 				<tr>
 					{#each fields as field, i}
@@ -277,6 +256,30 @@
 							<span
 								style={`color: ${getFieldRoleColor(instruction.fieldRoles[i])}`}
 							>
+								0x{binToHex(field.binary)}<!--
+														--><span class="gray">{'0'.repeat(field.length - field.binary.length)}</span>
+							</span>
+						</td>
+					{/each}
+				</tr>
+				<tr>
+					{#each fields as field, i}
+						<td style="width: {field.length / 32}%">
+							<span
+								style={`color: ${getFieldRoleColor(instruction.fieldRoles[i])}`}
+							>
+								<span>{binToDec(field.binary)}</span><!--
+														--><span class="gray">{'0'.repeat(field.length - field.binary.length)}</span>
+							</span>
+						</td>
+					{/each}
+				</tr>
+				<tr>
+					{#each fields as field, i}
+						<td style="width: {field.length / 32}%">
+							<span
+								style={`color: ${getFieldRoleColor(instruction.fieldRoles[i])}`}
+							>
 								<span>{field.binary}</span><!--
 														--><span class="gray">{'0'.repeat(field.length - field.binary.length)}</span>
 							</span>
@@ -285,6 +288,15 @@
 				</tr>
 			</tbody>
 		</table>
+		
+	</div>
+	</section>
+	<section class="raised">
+		<h2 style="margin-block-start: 0;">Single-Cycle Values</h2>
+
+		<h3>Control Unit</h3>
+		<h3>Register File</h3>
+		<h3>Data Memory</h3>
 	</section>
 </main>
 
@@ -320,6 +332,10 @@
 
 	.remove-margin-top {
 		margin-block-start: 0;
+	}
+
+	.remove-margin-bottom {
+		margin-block-end: 0;
 	}
 
 	.raised {
@@ -416,10 +432,6 @@
 		width: 100%;
 	}
 
-	.input label {
-		margin-block-end: 0.2em;
-	}
-
 	.setting label {
 		font-size: 1rem;
 		font-weight: bold;
@@ -430,13 +442,17 @@
 		margin: 0;
 	}
 
+	.right {
+		justify-content: flex-end;
+	}
+
 	#settings {
-		margin-block-start: 2em;
 		display: flex;
 	}
 
 	#settings > .setting {
-		margin-inline-end: 2rem;
+		margin-inline-end: 1.5rem;
+		width: max-content;
 	}
 
 	#mips-instruction {
